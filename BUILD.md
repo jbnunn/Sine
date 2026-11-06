@@ -101,6 +101,40 @@ bun run tauri build
 
 This compiles a release binary and generates platform-specific bundles (deb, rpm, AppImage on Linux; dmg on macOS; msi on Windows).
 
+## macOS: Running Sine as Its Own App
+
+### Why permission prompts name your terminal
+
+`bun run tauri dev` runs Sine as a plain program, without an `.app` bundle. macOS
+gives permissions to the app that launched it, so the Microphone and Accessibility
+prompts name your terminal (Ghostty, iTerm, Terminal, etc.) instead of Sine. Granting
+them to the terminal is fine for development, and you don't need to remove anything.
+
+### Build a local app with its own permissions
+
+```bash
+bun run bundle:mac
+open src-tauri/target/release/bundle/macos/Sine.app
+```
+
+`bundle:mac` builds only the `.app`. It skips the updater archive, which needs a
+private signing key that only the release CI has. Sine then asks for permissions under
+its own name (`com.jbnunn.sine`).
+
+### If Sine gets stuck on "Waiting..." after a rebuild
+
+Local builds use ad-hoc signing, so each rebuild looks like a new app to macOS, even
+though System Settings still shows the old permission as on. Clear only Sine's
+Accessibility entry, then reopen it:
+
+```bash
+osascript -e 'tell application id "com.jbnunn.sine" to quit' || true
+tccutil reset Accessibility com.jbnunn.sine
+open src-tauri/target/release/bundle/macos/Sine.app
+```
+
+This does not touch your terminal's permissions or any other app's.
+
 ## Linux Install (from source)
 
 The raw binary (`src-tauri/target/release/handy`) cannot run standalone — it needs Tauri resource files (tray icons, sounds, VAD model) to be co-located at the expected path.

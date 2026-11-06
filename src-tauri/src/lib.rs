@@ -791,13 +791,17 @@ pub fn run(cli_args: CliArgs) {
             actions::TranscriptionCompleteEvent,
         ]);
 
-    #[cfg(debug_assertions)] // <- Only export on non-release builds
-    specta_builder
-        .export(
-            Typescript::default().bigint(BigIntExportBehavior::Number),
-            "../src/bindings.ts",
-        )
-        .expect("Failed to export typescript bindings");
+    // Only export on non-release builds. The path is anchored to the crate
+    // directory so it works no matter where the app is launched from (e.g.
+    // `open Sine.app` starts with cwd `/`, which is read-only on macOS).
+    // A failed export should never stop the app from starting.
+    #[cfg(debug_assertions)]
+    if let Err(e) = specta_builder.export(
+        Typescript::default().bigint(BigIntExportBehavior::Number),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../src/bindings.ts"),
+    ) {
+        eprintln!("Warning: failed to export TypeScript bindings: {e}");
+    }
 
     let invoke_handler = specta_builder.invoke_handler();
 
