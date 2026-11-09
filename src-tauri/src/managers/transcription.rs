@@ -927,6 +927,39 @@ impl TranscriptionManager {
         self.complete(started, samples, live)
     }
 
+    /// Transcribe a recording in which the user held the quote key over some
+    /// stretches. Each stretch and each gap between them is transcribed on its
+    /// own in batch, and the quoted stretches are wrapped in straight quotes
+    /// without a closing period. `quote_spans` are sample ranges into `samples`.
+    pub fn transcribe_recording_with_quotes(
+        &self,
+        samples: Vec<f32>,
+        quote_spans: &[(usize, usize)],
+    ) -> Result<String> {
+        // The live result is one text for the whole take, so it can't say
+        // which words were quoted.
+        self.cancel_stream();
+        let pieces = quote_pieces(samples.len(), quote_spans);
+        let settings = get_settings(&self.app_handle);
+        let mark = self.engine.cancel_mark();
+        self.touch_activity();
+
+        let mut parts: Vec<(bool, String)> = Vec::new();
+        for (quoted, start, end) in pieces {
+            if end - start < MIN_QUOTE_PIECE_SAMPLES {
+                continue;
+            }
+            let batch = self.batch_context()?;
+            let outcome = self.transcribe_cpp(mark, batch, samples[start..end].to_vec())?;
+            let text = finish_text(outcome, &settings);
+            if !text.trim().is_empty() {
+                parts.push((quoted, text));
+            }
+        }
+        self.maybe_unload_immediately("transcription");
+        Ok(join_quote_parts(parts))
+    }
+
     /// The final text of one transcription, from its live result or else a
     /// batch run of `audio`. Every transcription finishes here.
     fn complete(
@@ -1097,6 +1130,58 @@ impl TranscriptionManager {
                 }
             })
     }
+}
+
+/// Pieces shorter than this (200 ms at 16 kHz) are skipped: they are VAD
+/// hangover or key-press timing slack, and models invent words for them.
+const MIN_QUOTE_PIECE_SAMPLES: usize = 3_200;
+
+/// Splits a recording of `len` samples into `(quoted, start, end)` pieces that
+/// cover it in order, with the quoted ranges taken from `spans`.
+fn quote_pieces(len: usize, spans: &[(usize, usize)]) -> Vec<(bool, usize, usize)> {
+    let mut spans: Vec<(usize, usize)> = spans
+        .iter()
+        .map(|&(start, end)| (start.min(len), end.min(len)))
+        .filter(|&(start, end)| end > start)
+        .collect();
+    spans.sort_unstable();
+
+    let mut pieces = Vec::new();
+    let mut cursor = 0;
+    for (start, end) in spans {
+        let start = start.max(cursor);
+        if end <= start {
+            continue;
+        }
+        if start > cursor {
+            pieces.push((false, cursor, start));
+        }
+        pieces.push((true, start, end));
+        cursor = end;
+    }
+    if cursor < len {
+        pieces.push((false, cursor, len));
+    }
+    pieces
+}
+
+/// Joins transcribed pieces with spaces. Quoted pieces get straight quotes and
+/// no trailing period; a plain piece that is followed by more text loses its
+/// trailing period too, since splitting the audio made it a sentence end.
+fn join_quote_parts(parts: Vec<(bool, String)>) -> String {
+    let last = parts.len().saturating_sub(1);
+    let mut out: Vec<String> = Vec::with_capacity(parts.len());
+    for (i, (quoted, text)) in parts.into_iter().enumerate() {
+        let text = text.trim();
+        if quoted {
+            out.push(format!("\"{}\"", text.trim_end_matches('.').trim_end()));
+        } else if i < last {
+            out.push(text.trim_end_matches('.').trim_end().to_string());
+        } else {
+            out.push(text.to_string());
+        }
+    }
+    out.join(" ")
 }
 
 /// What a batch transcription runs with, read once before its first run.

@@ -50,6 +50,19 @@ pub fn handle_shortcut_event(
         return;
     }
 
+    // Quote key: only meaningful while recording. Release always clears it.
+    if binding_id == super::QUOTE_BINDING_ID {
+        let audio_manager = app.state::<Arc<AudioRecordingManager>>();
+        if is_pressed {
+            if audio_manager.is_recording() {
+                audio_manager.set_quoting(true);
+            }
+        } else {
+            audio_manager.set_quoting(false);
+        }
+        return;
+    }
+
     let Some(action) = ACTION_MAP.get(binding_id) else {
         warn!(
             "No action defined in ACTION_MAP for shortcut ID '{}'. Shortcut: '{}', Pressed: {}",

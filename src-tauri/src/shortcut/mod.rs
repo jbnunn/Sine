@@ -65,6 +65,106 @@ static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
 #[cfg(not(target_os = "linux"))]
 static CANCEL_REGISTERED: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
 
+/// Binding id of the dynamic quote shortcut (apostrophe held with the
+/// dictation modifiers). Never persisted in settings.
+pub const QUOTE_BINDING_ID: &str = "quote";
+
+/// The quote shortcut the recording wants registered, if any.
+static QUOTE_DESIRED: std::sync::Mutex<Option<ShortcutBinding>> = std::sync::Mutex::new(None);
+
+/// The quote shortcut actually registered with the backend. The lock also
+/// serializes reconciliation passes.
+#[cfg(not(target_os = "linux"))]
+static QUOTE_REGISTERED: std::sync::Mutex<Option<ShortcutBinding>> = std::sync::Mutex::new(None);
+
+/// The dictation hotkey's modifiers with the apostrophe key, e.g.
+/// `option+space` becomes `option+'`. None when it can't be derived.
+fn quote_binding_for(app: &AppHandle, dictation_binding_id: &str) -> Option<ShortcutBinding> {
+    use ::handy_keys::{Hotkey, Key};
+
+    let dictation = get_settings(app)
+        .bindings
+        .get(dictation_binding_id)?
+        .current_binding
+        .clone();
+    let hotkey: Hotkey = dictation.parse().ok()?;
+    if hotkey.key == Some(Key::Quote) {
+        return None;
+    }
+    let quote = Hotkey::new(hotkey.modifiers, Key::Quote)
+        .ok()?
+        .to_handy_string();
+    Some(ShortcutBinding {
+        id: QUOTE_BINDING_ID.to_string(),
+        name: "Quote".to_string(),
+        description: "Wraps what you say while it is held in quotes.".to_string(),
+        default_binding: quote.clone(),
+        current_binding: quote,
+    })
+}
+
+/// Register the quote shortcut (called when recording starts). Holding it
+/// while dictating wraps that stretch of speech in quotes.
+pub fn register_quote_shortcut(app: &AppHandle, dictation_binding_id: &str) {
+    *QUOTE_DESIRED.lock().unwrap_or_else(|e| e.into_inner()) =
+        quote_binding_for(app, dictation_binding_id);
+    schedule_quote_reconcile(app);
+}
+
+/// Unregister the quote shortcut (called when recording stops).
+pub fn unregister_quote_shortcut(app: &AppHandle) {
+    *QUOTE_DESIRED.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    schedule_quote_reconcile(app);
+}
+
+/// Same off-thread, latest-request-wins scheme as the cancel shortcut.
+fn schedule_quote_reconcile(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        reconcile_quote_shortcut(&app);
+    });
+}
+
+fn reconcile_quote_shortcut(app: &AppHandle) {
+    // Dynamic registration is unstable on Linux, as for cancel.
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app;
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let mut registered = QUOTE_REGISTERED.lock().unwrap_or_else(|e| e.into_inner());
+        let desired = QUOTE_DESIRED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let same = matches!(
+            (&desired, &*registered),
+            (Some(d), Some(r)) if d.current_binding == r.current_binding
+        ) || (desired.is_none() && registered.is_none());
+        if same {
+            return;
+        }
+
+        if let Some(current) = registered.clone() {
+            match unregister_shortcut(app, current) {
+                Ok(()) => *registered = None,
+                Err(e) => {
+                    error!("Failed to unregister quote shortcut: {}", e);
+                    return;
+                }
+            }
+        }
+        if let Some(wanted) = desired {
+            match register_shortcut(app, wanted.clone()) {
+                Ok(()) => *registered = Some(wanted),
+                Err(e) => error!("Failed to register quote shortcut: {}", e),
+            }
+        }
+    }
+}
+
 /// Register the cancel shortcut (called when recording starts)
 pub fn register_cancel_shortcut(app: &AppHandle) {
     // Track recording lifecycle independently of the current implementation so

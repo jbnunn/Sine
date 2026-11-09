@@ -598,6 +598,8 @@ impl ShortcutAction for TranscribeAction {
         if recording_error.is_none() {
             // Dynamically register the cancel shortcut in a separate task to avoid deadlock
             shortcut::register_cancel_shortcut(app);
+            // Holding the quote key (the dictation modifiers + ') quotes speech.
+            shortcut::register_quote_shortcut(app, &binding_id);
         } else {
             // Starting failed (for example due to blocked microphone permissions).
             // Revert UI state so we don't stay stuck in the recording overlay.
@@ -629,6 +631,9 @@ impl ShortcutAction for TranscribeAction {
 
         // Unregister the cancel shortcut when transcription stops
         shortcut::unregister_cancel_shortcut(app);
+        shortcut::unregister_quote_shortcut(app);
+        // A key released after stop must not leave quoting on.
+        app.state::<Arc<AudioRecordingManager>>().set_quoting(false);
 
         let stop_time = Instant::now();
         debug!("TranscribeAction::stop called for binding: {}", binding_id);
@@ -675,6 +680,7 @@ impl ShortcutAction for TranscribeAction {
                 // Read now: by the time transcribing ends, another take may
                 // have replaced it.
                 let input_silent = rm.last_input_silent();
+                let quote_spans = rm.take_quote_spans();
                 debug!(
                     "Recording stopped and samples retrieved in {:?}, sample count: {}",
                     stop_recording_time.elapsed(),
@@ -713,7 +719,11 @@ impl ShortcutAction for TranscribeAction {
                     // otherwise a batch run of the samples. A cancel is surfaced
                     // as an error, so it never starts a batch run.
                     let transcription_time = Instant::now();
-                    let transcription_result = tm.transcribe_recording(samples);
+                    let transcription_result = if quote_spans.is_empty() {
+                        tm.transcribe_recording(samples)
+                    } else {
+                        tm.transcribe_recording_with_quotes(samples, &quote_spans)
+                    };
 
                     // Await WAV save and verify
                     let wav_saved = match wav_handle.await {
