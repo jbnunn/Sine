@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 
 use handy_recorder::{AudioChunk, Sink};
@@ -77,9 +76,6 @@ pub struct CapturedAudio {
     pub input_silent: bool,
     /// The detector the recording borrowed, for the next one.
     pub vad: CaptureVad,
-    /// Sample ranges (indices into `samples`) recorded while the quote key
-    /// was held. Sorted, non-overlapping, and never empty.
-    pub quote_spans: Vec<(usize, usize)>,
 }
 
 /// One recording's consumer of 16 kHz mono audio from handy-recorder. Runs on
@@ -96,11 +92,6 @@ pub struct CaptureSink {
     ready: Option<mpsc::Sender<()>>,
     samples: Vec<f32>,
     heard_sound: bool,
-    /// Set by the shortcut layer while the quote key is held.
-    quote_flag: Option<Arc<AtomicBool>>,
-    /// Where the open quote span began, in `samples`.
-    quote_start: Option<usize>,
-    quote_spans: Vec<(usize, usize)>,
 }
 
 /// Spectrum window at 16 kHz: 32 ms, near the overlay's ~30 Hz refresh.
@@ -137,39 +128,6 @@ impl CaptureSink {
             ready: Some(ready),
             samples: Vec::new(),
             heard_sound: false,
-            quote_flag: None,
-            quote_start: None,
-            quote_spans: Vec::new(),
-        }
-    }
-
-    /// Records the ranges of the recording made while `flag` was set.
-    pub fn with_quote_flag(mut self, flag: Arc<AtomicBool>) -> Self {
-        self.quote_flag = Some(flag);
-        self
-    }
-
-    /// Opens or closes a quote span when the flag changed since the last chunk.
-    /// Boundaries land on the emitted-sample count, so they stay correct when
-    /// VAD drops frames.
-    fn track_quote(&mut self) {
-        let Some(flag) = &self.quote_flag else {
-            return;
-        };
-        let held = flag.load(Ordering::Acquire);
-        match (held, self.quote_start) {
-            (true, None) => self.quote_start = Some(self.samples.len()),
-            (false, Some(_)) => self.close_quote(),
-            _ => {}
-        }
-    }
-
-    fn close_quote(&mut self) {
-        if let Some(start) = self.quote_start.take() {
-            let end = self.samples.len();
-            if end > start {
-                self.quote_spans.push((start, end));
-            }
         }
     }
 
@@ -180,8 +138,7 @@ impl CaptureSink {
 
     /// Hands back the recording and the detector. Logs what VAD still held
     /// back when the recording stopped.
-    pub fn finish(mut self) -> CapturedAudio {
-        self.close_quote();
+    pub fn finish(self) -> CapturedAudio {
         // Diagnostic for audio still withheld when capture stopped; it is not
         // conclusive in either direction.
         if self.policy != VadPolicy::Disabled {
@@ -203,7 +160,6 @@ impl CaptureSink {
             // `ready` is spent on the first chunk, so `None` means audio came.
             input_silent: self.ready.is_none() && !self.heard_sound,
             vad: self.vad,
-            quote_spans: self.quote_spans,
         }
     }
 
@@ -218,7 +174,6 @@ impl Sink for CaptureSink {
         if let Some(ready) = self.ready.take() {
             let _ = ready.send(());
         }
-        self.track_quote();
         if !self.heard_sound && !chunk.is_digital_silence() {
             self.heard_sound = true;
         }

@@ -488,10 +488,6 @@ pub struct AudioRecordingManager {
     cached_device: Arc<Mutex<Option<(String, String)>>>,
     /// The last recording was all-zero samples, not just audio without speech.
     last_input_silent: Arc<AtomicBool>,
-    /// Set while the quote key is held during a recording.
-    quote_flag: Arc<AtomicBool>,
-    /// Sample ranges of the last recording that were made under the quote key.
-    last_quote_spans: Arc<Mutex<Vec<(usize, usize)>>>,
 }
 
 impl AudioRecordingManager {
@@ -533,8 +529,6 @@ impl AudioRecordingManager {
             capture_generation: Arc::new(AtomicU64::new(0)),
             cached_device: Arc::new(Mutex::new(None)),
             last_input_silent: Arc::new(AtomicBool::new(false)),
-            quote_flag: Arc::new(AtomicBool::new(false)),
-            last_quote_spans: Arc::new(Mutex::new(Vec::new())),
         };
 
         // Always-on?  Open immediately.
@@ -952,14 +946,12 @@ impl AudioRecordingManager {
                 self.return_vad(captured.vad);
                 self.last_input_silent
                     .store(captured.input_silent, Ordering::Release);
-                *self.last_quote_spans.lock().unwrap() = captured.quote_spans;
                 captured.samples
             }
             Err(e) => {
                 // The recording and its detector are lost with the sink.
                 error!("Failed to stop recording: {e}");
                 self.last_input_silent.store(false, Ordering::Release);
-                self.last_quote_spans.lock().unwrap().clear();
                 if e.kind() != ErrorKind::NotRecording {
                     microphone.failed.store(true, Ordering::Release);
                 }
@@ -1037,15 +1029,13 @@ impl AudioRecordingManager {
             }
 
             let (ready_tx, receiver) = mpsc::channel();
-            self.quote_flag.store(false, Ordering::Release);
             let sink = CaptureSink::new(
                 self.lend_vad()?,
                 vad_policy,
                 Arc::clone(&self.on_levels),
                 Arc::clone(&self.on_audio),
                 ready_tx,
-            )
-            .with_quote_flag(Arc::clone(&self.quote_flag));
+            );
 
             let recorder = self.recorder.lock().unwrap();
             let Some(microphone) = recorder.as_ref() else {
@@ -1191,17 +1181,6 @@ impl AudioRecordingManager {
 
     pub fn was_cancelled_since(&self, generation: u64) -> bool {
         self.cancel_generation.load(Ordering::Acquire) != generation
-    }
-
-    /// Marks the start (`true`) or end (`false`) of a quoted stretch of the
-    /// current recording. The sink turns the change into a sample range.
-    pub fn set_quoting(&self, quoting: bool) {
-        self.quote_flag.store(quoting, Ordering::Release);
-    }
-
-    /// The quoted sample ranges of the last recording, handed over once.
-    pub fn take_quote_spans(&self) -> Vec<(usize, usize)> {
-        std::mem::take(&mut *self.last_quote_spans.lock().unwrap())
     }
 
     pub fn stop_recording(&self, binding_id: &str, cancel_generation: u64) -> Option<Vec<f32>> {
