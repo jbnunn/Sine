@@ -2,6 +2,8 @@
 
 Sine is a free, open source speech-to-text app that runs entirely on your computer. Hold a shortcut, talk, and your words show up wherever your cursor is. Nothing gets sent to the cloud.
 
+![Sine in Focus mode: the screen dims and the Halo animation glows in the center while you talk](docs/images/focus-halo.png)
+
 Sine is a fork of [Handy](https://github.com/cjpais/Handy) by CJ Pais. Handy does the heavy lifting here (the recording, the local models, the pasting), and I've been reworking how it looks and feels.
 
 ## Built on Handy
@@ -23,6 +25,8 @@ The default recording animation is a set of drifting sine waves, so the name fit
 - **A new look:** a warm neutral theme with a monochrome accent, and a new icon of three sine ribbons drawn like the Aurora animation.
 - **No update checks:** Sine never checks for updates, since there are no Sine releases to update to.
 - **Its own identity:** the app ID is `com.jbnunn.sine`, so Sine installs alongside Handy and keeps its own settings and models.
+
+![Sine's Advanced settings, with Overlay set to Focus and Recording Animation set to Halo](docs/images/settings.png)
 
 Everything else (models, shortcuts, post-processing, history and the CLI flags) works the same as Handy.
 
@@ -66,7 +70,7 @@ Sine behaves like Handy, so [Handy's README](https://github.com/cjpais/Handy#rea
 
 - **App data folder:** `~/Library/Application Support/com.jbnunn.sine/` on macOS, `%APPDATA%\com.jbnunn.sine\` on Windows, and `~/.local/share/com.jbnunn.sine/` on Linux.
 - **Internal names:** environment variables keep their `HANDY_` prefix (for example `HANDY_DISABLE_UPDATER`), and so do a few internal names in the code. That keeps it easy to pull in fixes from Handy.
-- **Reporting problems:** if something only happens in Sine, open an issue on [this repo](https://github.com/jbnunn/Handy/issues). If you can reproduce it in Handy too, report it to [Handy](https://github.com/cjpais/Handy/issues).
+- **Reporting problems:** if something only happens in Sine, open an issue on [this repo](https://github.com/jbnunn/Sine/issues). If you can reproduce it in Handy too, report it to [Handy](https://github.com/cjpais/Handy/issues).
 
 ## License
 
