@@ -516,8 +516,15 @@ fn register_all_shortcuts_for_implementation(
                 id, binding.current_binding, implementation, e
             );
 
-            // Reset to default
-            binding.current_binding = default_binding.current_binding.clone();
+            // Reset to default. If the default itself is invalid here (Right Option on
+            // the Tauri backend), use a modifier combo the backend can register.
+            let mut reset_to = default_binding.current_binding.clone();
+            if id == "transcribe"
+                && validate_shortcut_for_implementation(&reset_to, implementation).is_err()
+            {
+                reset_to = settings::TAURI_FALLBACK_TRANSCRIBE_SHORTCUT.to_string();
+            }
+            binding.current_binding = reset_to;
             current_settings
                 .bindings
                 .insert(id.clone(), binding.clone());

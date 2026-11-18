@@ -940,11 +940,18 @@ fn ensure_post_process_defaults(settings: &mut AppSettings) -> bool {
 
 pub const SETTINGS_STORE_PATH: &str = "settings_store.json";
 
+/// Transcribe shortcut used when the default can't be registered by the Tauri
+/// keyboard backend (macOS's Right Option default is side-specific).
+pub const TAURI_FALLBACK_TRANSCRIBE_SHORTCUT: &str = "option+space";
+
 pub fn get_default_settings() -> AppSettings {
     #[cfg(target_os = "windows")]
     let default_shortcut = "ctrl+space";
+    // Right Option alone, so dictation is one key. Only the HandyKeys backend (the macOS
+    // default) can register a side-specific modifier; the Tauri backend falls back to
+    // TAURI_FALLBACK_TRANSCRIBE_SHORTCUT.
     #[cfg(target_os = "macos")]
-    let default_shortcut = "option+space";
+    let default_shortcut = "option_right";
     #[cfg(target_os = "linux")]
     let default_shortcut = "ctrl+space";
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
