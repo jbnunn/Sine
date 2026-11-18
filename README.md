@@ -32,7 +32,7 @@ Everything else (models, shortcuts, post-processing, history and the CLI flags) 
 
 ## How it works
 
-1. **Press** your shortcut. Hold it to record and release to stop, or tap it to toggle recording on and off.
+1. **Press** your shortcut (defaults to Right Option). Hold it to record and release to stop, or tap it to toggle recording on and off.
 2. **Speak** while it's listening.
 3. **Release**, and Sine transcribes your speech locally.
 4. **Get** the text pasted into whatever app you're using.
