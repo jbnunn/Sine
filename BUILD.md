@@ -135,6 +135,32 @@ open src-tauri/target/release/bundle/macos/Sine.app
 
 This does not touch your terminal's permissions or any other app's.
 
+### Install Sine to /Applications for daily use
+
+Opening Sine from the build folder is fine for testing, but don't use that copy day to
+day. Every rebuild replaces it, and macOS can stop launching a login item whose app
+changed underneath it, so Sine may not start after a reboot. Copy the app to
+`/Applications` and run it from there:
+
+```bash
+osascript -e 'tell application id "com.jbnunn.sine" to quit' || true
+ditto src-tauri/target/release/bundle/macos/Sine.app /Applications/Sine.app
+open /Applications/Sine.app
+```
+
+`ditto` copies the whole app bundle and keeps its signature intact. If you want Sine to
+start when you log in, turn on **Autostart** in Sine's settings after launching it from
+`/Applications`. If Autostart was already on, turn it off and back on so the login
+entry points at the new copy.
+
+After each rebuild, run the three commands above again. If Sine then gets stuck on
+"Waiting...", reset its Accessibility entry and reopen it:
+
+```bash
+tccutil reset Accessibility com.jbnunn.sine
+open /Applications/Sine.app
+```
+
 ## Linux Install (from source)
 
 The raw binary (`src-tauri/target/release/handy`) cannot run standalone — it needs Tauri resource files (tray icons, sounds, VAD model) to be co-located at the expected path.
