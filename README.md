@@ -2,7 +2,7 @@
 
 Sine is a free, open source speech-to-text app that runs entirely on your computer. Hold a shortcut, talk, and your words show up wherever your cursor is. Nothing gets sent to the cloud.
 
-![Sine in Focus mode: the screen dims and the Halo animation glows in the center while you talk](docs/images/focus-halo.png)
+![Sine in Focus mode: the screen dims and the Halo reacts while you talk, then the words are pasted into Claude Code](docs/images/focus-halo.gif)
 
 Sine is a fork of [Handy](https://github.com/cjpais/Handy) by CJ Pais. Handy does the heavy lifting here (the recording, the local models, the pasting), and I've been reworking how it looks and feels.
 
